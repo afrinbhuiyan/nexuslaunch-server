@@ -4,10 +4,17 @@ const dotenv = require("dotenv");
 const cookieParser = require("cookie-parser");
 const { MongoClient, ServerApiVersion } = require("mongodb");
 
+// Load environment variables
 dotenv.config();
 
 const app = express();
-app.use(cors({ origin: ["http://localhost:5173"], credentials: true }));
+
+// CORS configuration
+app.use(cors({ 
+  origin: ["http://localhost:5173"], 
+  credentials: true 
+}));
+
 app.use(express.json());
 app.use(cookieParser());
 
@@ -21,30 +28,50 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
+    // Connect to MongoDB
     await client.connect();
+    console.log("✅ Successfully connected to MongoDB");
 
-    // const db = client.db("apporbitDB");
-    // const productsCollection = db.collection("products");
+    // Verify connection
+    await client.db("admin").command({ ping: 1 });
+    console.log("Pinged your deployment. You successfully connected to MongoDB!");
 
+    // Get database reference
+    const db = client.db("apporbitDB");
+    
+    // Verify products collection exists
+    const collections = await db.listCollections().toArray();
+    const productCollectionExists = collections.some(col => col.name === "products");
+    
+    if (!productCollectionExists) {
+      console.warn("⚠️ 'products' collection does not exist in the database");
+    } else {
+      const productsCount = await db.collection("products").countDocuments();
+      console.log(`📊 Found ${productsCount} products in the collection`);
+    }
+
+    // Setup routes
     const productRoutes = require("./routes/products.routes")(client);
     app.use("/api/products", productRoutes);
 
-    app.get("/test", (req, res) => {
-      res.send("✅ Product route working");
+    // Root endpoint
+    app.get("/", (req, res) => {
+      res.send("🔥 AppOrbit server running!");
     });
 
-    // TODO: Import and use route files like:
-    // app.use('/api/products', productsRoutes)
-    await client.db("admin").command({ ping: 1 });
-    console.log(
-      "Pinged your deployment. You successfully connected to MongoDB!"
-    );
+    // Error handling middleware
+    app.use((err, req, res, next) => {
+      console.error("Server error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    });
+
   } catch (err) {
-    console.error(err);
+    console.error("❌ Server startup failed:", err);
+    process.exit(1);
   }
 }
 
-run();
+run().catch(console.dir);
 
 app.get("/", (req, res) => {
   res.send("🔥 AppOrbit server running!");

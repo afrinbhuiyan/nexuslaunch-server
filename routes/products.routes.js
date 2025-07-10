@@ -18,8 +18,27 @@ module.exports = (client) => {
     }
   });
 
-  router.get("/test", (req, res) => {
-    res.send("✅ Product route working");
+  router.get("/add", async (req, res) => {
+    const result = await productsCollection.find().toArray();
+    res.send(result);
+  });
+
+  
+
+  // ✅ Get Featured Products
+  router.get("/featured", async (req, res) => {
+    try {
+      const featuredProducts = await productsCollection
+        .find()
+        .sort({ timestamp: -1 })
+        .limit(4)
+        .toArray();
+
+      res.send(featuredProducts);
+    } catch (err) {
+      console.error("Failed to fetch featured products:", err);
+      res.status(500).send({ error: "Could not load featured products" });
+    }
   });
 
   return router;
