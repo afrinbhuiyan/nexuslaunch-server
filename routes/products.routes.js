@@ -1,7 +1,7 @@
-// routes/products.routes.js
 const express = require("express");
 const router = express.Router();
 const verifyToken = require("../middleware/verifyToken");
+const { ObjectId } = require("mongodb");
 
 module.exports = (client) => {
   const db = client.db("apporbitDB");
@@ -23,7 +23,22 @@ module.exports = (client) => {
     res.send(result);
   });
 
-  
+  // GET /api/products?search=design
+  router.get("/", async (req, res) => {
+    const search = req.query.search || "";
+    try {
+      const products = await productsCollection
+        .find({
+          status: "approved",
+          name: { $regex: search, $options: "i" }, // case-insensitive
+        })
+        .sort({ timestamp: -1 })
+        .toArray();
+      res.send(products);
+    } catch (err) {
+      res.status(500).send({ message: "Failed to fetch products" });
+    }
+  });
 
   // ✅ Get Featured Products
   router.get("/featured", async (req, res) => {
@@ -38,6 +53,44 @@ module.exports = (client) => {
     } catch (err) {
       console.error("Failed to fetch featured products:", err);
       res.status(500).send({ error: "Could not load featured products" });
+    }
+  });
+
+  // PATCH /api/products/vote/:id
+
+  router.patch("/vote/:id", async (req, res) => {
+    try {
+      const productId = req.params.id;
+      const userEmail = req.body.email;
+
+      if (!ObjectId.isValid(productId)) {
+        return res.status(400).json({ message: "Invalid product ID" });
+      }
+
+      const product = await productsCollection.findOne({
+        _id: new ObjectId(productId),
+      });
+      if (!product) {
+        return res.status(404).json({ message: "Product not found" });
+      }
+
+      if (product.voters?.includes(userEmail)) {
+        return res.status(400).json({ message: "You already voted" });
+      }
+
+      const updated = await productsCollection.findOneAndUpdate(
+        { _id: new ObjectId(productId) },
+        {
+          $inc: { upvotes: 1 },
+          $push: { voters: userEmail },
+        },
+        { returnDocument: "after" }
+      );
+
+      res.json({ success: true, updatedProduct: updated.value });
+    } catch (err) {
+      console.error("Vote error:", err);
+      res.status(500).json({ message: "Server error while voting" });
     }
   });
 
