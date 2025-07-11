@@ -30,7 +30,7 @@ module.exports = (client) => {
       const products = await productsCollection
         .find({
           status: "approved",
-          name: { $regex: search, $options: "i" }, // case-insensitive
+          name: { $regex: search, $options: "i" },
         })
         .sort({ timestamp: -1 })
         .toArray();
@@ -91,6 +91,23 @@ module.exports = (client) => {
     } catch (err) {
       console.error("Vote error:", err);
       res.status(500).json({ message: "Server error while voting" });
+    }
+  });
+
+  // Get a single product by ID
+  router.get("/:id", async (req, res) => {
+    const { id } = req.params;
+    try {
+      const product = await productsCollection.findOne({
+        _id: new ObjectId(id),
+      });
+      if (!product) {
+        return res.status(404).json({ message: "Product not found" });
+      }
+      res.send(product);
+    } catch (err) {
+      console.error("Failed to fetch product:", err);
+      res.status(500).send({ message: "Failed to fetch product" });
     }
   });
 

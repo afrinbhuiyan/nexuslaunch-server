@@ -10,10 +10,12 @@ dotenv.config();
 const app = express();
 
 // CORS configuration
-app.use(cors({ 
-  origin: ["http://localhost:5173"], 
-  credentials: true 
-}));
+app.use(
+  cors({
+    origin: ["http://localhost:5173"],
+    credentials: true,
+  })
+);
 
 app.use(express.json());
 app.use(cookieParser());
@@ -34,15 +36,19 @@ async function run() {
 
     // Verify connection
     await client.db("admin").command({ ping: 1 });
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
+    console.log(
+      "Pinged your deployment. You successfully connected to MongoDB!"
+    );
 
     // Get database reference
     const db = client.db("apporbitDB");
-    
+
     // Verify products collection exists
     const collections = await db.listCollections().toArray();
-    const productCollectionExists = collections.some(col => col.name === "products");
-    
+    const productCollectionExists = collections.some(
+      (col) => col.name === "products"
+    );
+
     if (!productCollectionExists) {
       console.warn("⚠️ 'products' collection does not exist in the database");
     } else {
@@ -52,7 +58,10 @@ async function run() {
 
     // Setup routes
     const productRoutes = require("./routes/products.routes")(client);
+    const reviewsRoutes = require("./routes/reviews.routes")(client);
+
     app.use("/api/products", productRoutes);
+    app.use("/api/reviews", reviewsRoutes);
 
     // Root endpoint
     app.get("/", (req, res) => {
@@ -64,7 +73,6 @@ async function run() {
       console.error("Server error:", err);
       res.status(500).json({ error: "Internal server error" });
     });
-
   } catch (err) {
     console.error("❌ Server startup failed:", err);
     process.exit(1);
