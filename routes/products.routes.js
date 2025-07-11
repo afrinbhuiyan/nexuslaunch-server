@@ -56,8 +56,23 @@ module.exports = (client) => {
     }
   });
 
-  // PATCH /api/products/vote/:id
+  // ✅ Trending Products (Top 6 by upvotes)
+  router.get("/trending", async (req, res) => {
+    try {
+      const trending = await productsCollection
+        .find() // or remove this line if not needed
+        .sort({ upvotes: -1, timestamp: -1 })
+        .limit(6)
+        .toArray();
 
+      res.send(trending);
+    } catch (err) {
+      console.error("Trending Route Error:", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // PATCH /api/products/vote/:id
   router.patch("/vote/:id", async (req, res) => {
     try {
       const productId = req.params.id;
@@ -97,17 +112,26 @@ module.exports = (client) => {
   // Get a single product by ID
   router.get("/:id", async (req, res) => {
     const { id } = req.params;
+
     try {
       const product = await productsCollection.findOne({
         _id: new ObjectId(id),
       });
+
       if (!product) {
-        return res.status(404).json({ message: "Product not found" });
+        return res.status(404).json({
+          success: false,
+          message: "Product not found",
+        });
       }
-      res.send(product);
+
+      res.json({ success: true, product });
     } catch (err) {
       console.error("Failed to fetch product:", err);
-      res.status(500).send({ message: "Failed to fetch product" });
+      res.status(500).json({
+        success: false,
+        message: "Server error while fetching product",
+      });
     }
   });
 
