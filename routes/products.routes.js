@@ -25,7 +25,7 @@ module.exports = (client) => {
     }
   });
 
-  router.get("/add", async (req, res) => {
+  router.get("/all", async (req, res) => {
     const result = await productsCollection.find().toArray();
     res.send(result);
   });
@@ -104,6 +104,39 @@ module.exports = (client) => {
       res.send(products);
     } catch (err) {
       res.status(500).send({ message: "Failed to fetch pending products" });
+    }
+  });
+
+  router.patch("/accept/:id", async (req, res) => {
+    const { id } = req.params;
+    try {
+      const result = await productsCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { status: "accepted" } }
+      );
+      if (result.modifiedCount === 0) {
+        return res
+          .status(404)
+          .json({ message: "Product not found or not modified" });
+      }
+      res.json({ success: true, message: "Product accepted" });
+    } catch (error) {
+      console.error("Accept error:", error);
+      res.status(500).json({ message: "Server error while accepting product" });
+    }
+  });
+
+  // Reject product
+  router.patch("/reject/:id", async (req, res) => {
+    const { id } = req.params;
+    try {
+      const result = await productsCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { status: "Rejected" } }
+      );
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Rejection failed" });
     }
   });
 
