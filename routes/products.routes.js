@@ -9,7 +9,14 @@ module.exports = (client) => {
 
   // Add Product
   router.post("/add", async (req, res) => {
-    const product = req.body;
+    const product = {
+      ...req.body,
+      status: "pending", // Add default status
+      timestamp: new Date(), // Add timestamp for sorting
+      upvotes: 0, // Initialize votes
+      voters: [], // Initialize voters array
+    };
+
     try {
       const result = await productsCollection.insertOne(product);
       res.send(result);
@@ -69,6 +76,76 @@ module.exports = (client) => {
     } catch (err) {
       console.error("Trending Route Error:", err);
       res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ✅ GET Products by User Email (for My Products Page)
+  // Update the user products endpoint to use owner.email
+  router.get("/user/:email", async (req, res) => {
+    try {
+      const products = await productsCollection
+        .find({
+          "owner.email": req.params.email, // Changed from userEmail to owner.email
+        })
+        .toArray();
+      res.send(products);
+    } catch (err) {
+      console.error("Error fetching user's products:", err);
+      res.status(500).json({ message: "Error fetching user's products" });
+    }
+  });
+
+  // Add this new endpoint for admin approval
+  router.get("/pending", async (req, res) => {
+    try {
+      const products = await productsCollection
+        .find({ status: "pending" })
+        .toArray();
+      res.send(products);
+    } catch (err) {
+      res.status(500).send({ message: "Failed to fetch pending products" });
+    }
+  });
+
+  router.patch("/:id", async (req, res) => {
+    const { id } = req.params;
+    const updatedData = req.body;
+
+    try {
+      const result = await productsCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: updatedData }
+      );
+
+      if (result.modifiedCount === 0) {
+        return res
+          .status(404)
+          .json({ message: "Product not found or not modified" });
+      }
+
+      res.json({ success: true, message: "Product updated successfully" });
+    } catch (error) {
+      console.error("Update error:", error);
+      res.status(500).json({ message: "Server error while updating product" });
+    }
+  });
+
+  // ✅ DELETE a product by ID
+  router.delete("/:id", async (req, res) => {
+    try {
+      const id = req.params.id;
+      const result = await productsCollection.deleteOne({
+        _id: new ObjectId(id),
+      });
+
+      if (result.deletedCount === 0) {
+        return res.status(404).json({ message: "Product not found" });
+      }
+
+      res.json({ success: true, message: "Product deleted" });
+    } catch (err) {
+      console.error("Error deleting product:", err);
+      res.status(500).json({ message: "Failed to delete product" });
     }
   });
 
