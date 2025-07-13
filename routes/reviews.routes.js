@@ -44,5 +44,16 @@ module.exports = (client) => {
     }
   });
 
+  router.get("/reported", async (req, res) => {
+    try {
+      const reportedProducts = await productsCollection
+        .find({ reports: { $exists: true, $not: { $size: 0 } } })
+        .toArray();
+      res.send(reportedProducts);
+    } catch (err) {
+      res.status(500).json({ message: "Error fetching reported products" });
+    }
+  });
+
   return router;
 };

@@ -7,29 +7,6 @@ module.exports = (client) => {
   const db = client.db("apporbitDB");
   const productsCollection = db.collection("products");
 
-  // Add Product
-  router.post("/add", async (req, res) => {
-    const product = {
-      ...req.body,
-      status: "pending", // Add default status
-      timestamp: new Date(), // Add timestamp for sorting
-      upvotes: 0, // Initialize votes
-      voters: [], // Initialize voters array
-    };
-
-    try {
-      const result = await productsCollection.insertOne(product);
-      res.send(result);
-    } catch (err) {
-      res.status(500).send({ error: "Failed to add product" });
-    }
-  });
-
-  router.get("/all", async (req, res) => {
-    const result = await productsCollection.find().toArray();
-    res.send(result);
-  });
-
   // GET /api/products?search=design
   router.get("/", async (req, res) => {
     const search = req.query.search || "";
@@ -47,11 +24,80 @@ module.exports = (client) => {
     }
   });
 
-  // ✅ Get Featured Products
+  // Add to products.routes.js
+  router.get("/all", async (req, res) => {
+    try {
+      const products = await productsCollection
+        .find({
+          status: { $in: ["approved", "pending"] }, // Show both
+          name: { $regex: req.query.search || "", $options: "i" },
+        })
+        .sort({ timestamp: -1 })
+        .toArray();
+      res.send(products);
+    } catch (err) {
+      res.status(500).send({ message: "Failed to fetch products" });
+    }
+  });
+
+  // Add Product
+  router.post("/add", async (req, res) => {
+    const product = {
+      ...req.body,
+      isFeatured: false,
+      status: "pending",
+      timestamp: new Date(),
+      upvotes: 0,
+      voters: [],
+    };
+
+    try {
+      const result = await productsCollection.insertOne(product);
+      res.send(result);
+    } catch (err) {
+      res.status(500).send({ error: "Failed to add product" });
+    }
+  });
+
+  // Add this new endpoint for featuring products
+  router.patch("/:id/feature", async (req, res) => {
+    const { id } = req.params;
+    const { isFeatured } = req.body;
+
+    try {
+      if (!ObjectId.isValid(id)) {
+        return res.status(400).json({ message: "Invalid product ID" });
+      }
+
+      const result = await productsCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { isFeatured } }
+      );
+
+      if (result.matchedCount === 0) {
+        return res.status(404).json({ message: "Product not found" });
+      }
+
+      res.json({
+        success: true,
+        message: `Product ${
+          isFeatured ? "featured" : "unfeatured"
+        } successfully`,
+      });
+    } catch (err) {
+      console.error("Feature toggle error:", err);
+      res.status(500).json({ message: "Failed to update featured status" });
+    }
+  });
+
+  // Update the featured products endpoint
   router.get("/featured", async (req, res) => {
     try {
       const featuredProducts = await productsCollection
-        .find()
+        .find({
+          isFeatured: true,
+          status: "approved", // Only approved products can be featured
+        })
         .sort({ timestamp: -1 })
         .limit(4)
         .toArray();
@@ -59,7 +105,10 @@ module.exports = (client) => {
       res.send(featuredProducts);
     } catch (err) {
       console.error("Failed to fetch featured products:", err);
-      res.status(500).send({ error: "Could not load featured products" });
+      res.status(500).send({
+        success: false,
+        error: "Could not load featured products",
+      });
     }
   });
 
@@ -80,7 +129,6 @@ module.exports = (client) => {
   });
 
   // ✅ GET Products by User Email (for My Products Page)
-  // Update the user products endpoint to use owner.email
   router.get("/user/:email", async (req, res) => {
     try {
       const products = await productsCollection
@@ -112,7 +160,7 @@ module.exports = (client) => {
     try {
       const result = await productsCollection.updateOne(
         { _id: new ObjectId(id) },
-        { $set: { status: "accepted" } }
+        { $set: { status: "approved" } }
       );
       if (result.modifiedCount === 0) {
         return res
