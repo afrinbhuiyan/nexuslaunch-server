@@ -59,11 +59,13 @@ async function run() {
     // Setup routes
     const productRoutes = require("./routes/products.routes")(client);
     const reviewsRoutes = require("./routes/reviews.routes")(client);
+    const reportsRoutes = require("./routes/reports.routes")(client);
     const usersRoutes = require("./routes/users.routes")(client);
     const paymentRoutes = require("./routes/payment.routes")(client);
 
     app.use("/api/products", productRoutes);
     app.use("/api/reviews", reviewsRoutes);
+    app.use("/api/reports", reportsRoutes);
     app.use("/api/users", usersRoutes);
     app.use("/api/payment", paymentRoutes);
 

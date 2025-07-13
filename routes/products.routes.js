@@ -5,6 +5,7 @@ const { ObjectId } = require("mongodb");
 
 module.exports = (client) => {
   const db = client.db("apporbitDB");
+  const reportsCollection = db.collection("reports");
   const productsCollection = db.collection("products");
 
   // GET /api/products?search=design
@@ -211,10 +212,17 @@ module.exports = (client) => {
     }
   });
 
-  // ✅ DELETE a product by ID
+  // ✅ DELETE a product by ID AND its reports
   router.delete("/:id", async (req, res) => {
+    const { id } = req.params;
+
     try {
-      const id = req.params.id;
+      // Check for valid ID
+      if (!ObjectId.isValid(id)) {
+        return res.status(400).json({ message: "Invalid product ID format" });
+      }
+
+      // Delete product
       const result = await productsCollection.deleteOne({
         _id: new ObjectId(id),
       });
@@ -223,10 +231,13 @@ module.exports = (client) => {
         return res.status(404).json({ message: "Product not found" });
       }
 
-      res.json({ success: true, message: "Product deleted" });
+      // ✅ Delete associated reports
+      await reportsCollection.deleteMany({ productId: id });
+
+      res.json({ success: true, message: "Product and its reports deleted" });
     } catch (err) {
-      console.error("Error deleting product:", err);
-      res.status(500).json({ message: "Failed to delete product" });
+      console.error("Error deleting product and reports:", err);
+      res.status(500).json({ message: "Error deleting product and reports" });
     }
   });
 
@@ -290,6 +301,21 @@ module.exports = (client) => {
         success: false,
         message: "Server error while fetching product",
       });
+    }
+  });
+
+  // For GET /api/products/reported
+  router.get("/reported", async (req, res) => {
+    try {
+      const reportedProducts = await productsCollection
+        .find({
+          "reports.0": { $exists: true },
+        })
+        .toArray();
+      res.json(reportedProducts);
+    } catch (err) {
+      console.error("Error fetching reported products:", err);
+      res.status(500).json({ message: "Error fetching reported products" });
     }
   });
 
