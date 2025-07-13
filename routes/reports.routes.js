@@ -27,26 +27,43 @@ module.exports = (client) => {
 
   // Create report
   router.post("/", async (req, res) => {
+    const { productId, reporterId } = req.body;
+
     try {
+      if (!ObjectId.isValid(productId)) {
+        return res.status(400).json({ message: "Invalid productId" });
+      }
+
+      // Check if this user already reported this product
+      const product = await productsCollection.findOne({
+        _id: new ObjectId(productId),
+      });
+      if (product?.reports?.some((r) => r.reporterId === reporterId)) {
+        return res
+          .status(400)
+          .json({ message: "You have already reported this product." });
+      }
+
       const report = {
-        productId: req.body.productId,
-        reporterId: req.body.reporterId,
+        productId,
+        reporterId,
         reason: req.body.reason || "Inappropriate content",
         timestamp: new Date(),
         status: "pending",
       };
 
-      // Add report to reports collection
+      // Save to reports collection (optional)
       await reportsCollection.insertOne(report);
 
-      // Also add to product's reports array
+      // Save to product document
       await productsCollection.updateOne(
-        { _id: new ObjectId(req.body.productId) },
+        { _id: new ObjectId(productId) },
         { $push: { reports: report } }
       );
 
-      res.status(201).json(report);
+      res.status(201).json({ success: true, report });
     } catch (err) {
+      console.error("Error creating report:", err);
       res.status(500).json({ message: "Error creating report" });
     }
   });
