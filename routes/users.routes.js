@@ -1,12 +1,13 @@
 const express = require("express");
 const router = express.Router();
 const { ObjectId } = require("mongodb");
+const verifyToken = require("../middleware/verifyToken");
 
 module.exports = (client) => {
   const db = client.db("apporbitDB");
   const usersCollection = db.collection("users");
 
-  router.get("/", async (req, res) => {
+  router.get("/", verifyToken, async (req, res) => {
     try {
       const users = await usersCollection.find().toArray();
       res.json(users);
@@ -17,7 +18,7 @@ module.exports = (client) => {
   });
 
   // Get subscription status by email (GET /api/users/subscription-status?email=...)
-  router.get("/subscription-status", async (req, res) => {
+  router.get("/subscription-status", verifyToken, async (req, res) => {
     const email = req.query.email;
     if (!email) {
       return res.status(400).json({ message: "Email is required" });
@@ -30,6 +31,20 @@ module.exports = (client) => {
       res.json({ subscribed: user.subscribed || false });
     } catch (error) {
       console.error("Subscription status error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  router.get("/:email", async (req, res) => {
+    const email = req.params.email;
+    try {
+      const user = await usersCollection.findOne({ email });
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      res.json(user);
+    } catch (err) {
+      console.error("Error fetching user:", err);
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -57,7 +72,7 @@ module.exports = (client) => {
   });
 
   // Update user role by user ID (PATCH /api/users/role/:id)
-  router.patch("/role/:id", async (req, res) => {
+  router.patch("/role/:id", verifyToken, async (req, res) => {
     const { id } = req.params;
     const { role } = req.body;
 

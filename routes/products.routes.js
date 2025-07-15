@@ -42,7 +42,7 @@ module.exports = (client) => {
   });
 
   // Add Product
-  router.post("/add", async (req, res) => {
+  router.post("/add", verifyToken, async (req, res) => {
     const product = {
       ...req.body,
       isFeatured: false,
@@ -130,7 +130,7 @@ module.exports = (client) => {
   });
 
   // ✅ GET Products by User Email (for My Products Page)
-  router.get("/user/:email", async (req, res) => {
+  router.get("/user/:email", verifyToken, async (req, res) => {
     try {
       const products = await productsCollection
         .find({
@@ -145,7 +145,7 @@ module.exports = (client) => {
   });
 
   // Add this new endpoint for admin approval
-  router.get("/pending", async (req, res) => {
+  router.get("/pending", verifyToken, async (req, res) => {
     try {
       const products = await productsCollection
         .find({ status: "pending" })
@@ -241,42 +241,44 @@ module.exports = (client) => {
     }
   });
 
-  // PATCH /api/products/vote/:id
-  router.patch("/vote/:id", async (req, res) => {
-    try {
-      const productId = req.params.id;
-      const userEmail = req.body.email;
 
-      if (!ObjectId.isValid(productId)) {
-        return res.status(400).json({ message: "Invalid product ID" });
-      }
+router.patch("/vote/:id", verifyToken, async (req, res) => {
+  try {
+    const productId = req.params.id;
+    const userEmail = req.user.email;
 
-      const product = await productsCollection.findOne({
-        _id: new ObjectId(productId),
-      });
-      if (!product) {
-        return res.status(404).json({ message: "Product not found" });
-      }
-
-      if (product.voters?.includes(userEmail)) {
-        return res.status(400).json({ message: "You already voted" });
-      }
-
-      const updated = await productsCollection.findOneAndUpdate(
-        { _id: new ObjectId(productId) },
-        {
-          $inc: { upvotes: 1 },
-          $push: { voters: userEmail },
-        },
-        { returnDocument: "after" }
-      );
-
-      res.json({ success: true, updatedProduct: updated.value });
-    } catch (err) {
-      console.error("Vote error:", err);
-      res.status(500).json({ message: "Server error while voting" });
+    if (!ObjectId.isValid(productId)) {
+      return res.status(400).json({ message: "Invalid product ID" });
     }
-  });
+
+    const product = await productsCollection.findOne({
+      _id: new ObjectId(productId),
+    });
+
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    if (product.voters?.includes(userEmail)) {
+      return res.status(400).json({ message: "You already voted" });
+    }
+
+    const updated = await productsCollection.findOneAndUpdate(
+      { _id: new ObjectId(productId) },
+      {
+        $inc: { upvotes: 1 },
+        $push: { voters: userEmail },
+      },
+      { returnDocument: "after" }
+    );
+
+    res.json({ success: true, updatedProduct: updated.value });
+  } catch (err) {
+    console.error("Vote error:", err);
+    res.status(500).json({ message: "Server error while voting" });
+  }
+});
+
 
   // Get a single product by ID
   router.get("/:id", async (req, res) => {
@@ -305,7 +307,7 @@ module.exports = (client) => {
   });
 
   // For GET /api/products/reported
-  router.get("/reported", async (req, res) => {
+  router.get("/reported", verifyToken, async (req, res) => {
     try {
       const reportedProducts = await productsCollection
         .find({

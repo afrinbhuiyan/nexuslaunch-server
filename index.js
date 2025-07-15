@@ -63,6 +63,7 @@ async function run() {
     const usersRoutes = require("./routes/users.routes")(client);
     const paymentRoutes = require("./routes/payment.routes")(client);
     const statisticsRoutes = require("./routes/statistics.routes")(client);
+    const couponsRoutes = require("./routes/coupons.routes")(client);
 
     app.use("/api/products", productRoutes);
     app.use("/api/reviews", reviewsRoutes);
@@ -70,6 +71,7 @@ async function run() {
     app.use("/api/users", usersRoutes);
     app.use("/api/payment", paymentRoutes);
     app.use("/api/statistics", statisticsRoutes);
+    app.use("/api/coupons", couponsRoutes);
 
     // Root endpoint
     app.get("/", (req, res) => {
