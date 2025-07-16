@@ -48,6 +48,41 @@ module.exports = (client) => {
     }
   });
 
+  // POST /api/payment/create-payment-intent
+  router.post("/create-payment-intent", async (req, res) => {
+    const { amount, email, couponCode } = req.body;
+
+    let finalAmount = amount;
+
+    // 🔹 Check and apply valid coupon
+    if (couponCode) {
+      const coupon = await db.collection("coupons").findOne({
+        code: couponCode,
+        expiry: { $gte: new Date() },
+      });
+
+      if (!coupon) {
+        return res.status(400).json({ message: "Invalid or expired coupon" });
+      }
+
+      const discount = (coupon.discountPercentage / 100) * amount;
+      finalAmount = Math.max(0, Math.round(amount - discount));
+    }
+
+    try {
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: finalAmount,
+        currency: "usd",
+        metadata: { email, couponUsed: couponCode || "none" },
+      });
+
+      res.send({ clientSecret: paymentIntent.client_secret });
+    } catch (err) {
+      console.error("Stripe Error:", err);
+      res.status(500).json({ message: "Payment intent creation failed" });
+    }
+  });
+
   // PATCH - update coupon
   router.patch("/:id", verifyToken, async (req, res) => {
     const { id } = req.params;

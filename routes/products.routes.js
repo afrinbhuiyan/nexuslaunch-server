@@ -7,20 +7,32 @@ module.exports = (client) => {
   const db = client.db("apporbitDB");
   const reportsCollection = db.collection("reports");
   const productsCollection = db.collection("products");
+  const usersCollection = db.collection("users");
 
   // GET /api/products?search=design
   router.get("/", async (req, res) => {
     const search = req.query.search || "";
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 6;
+    const skip = (page - 1) * limit;
+
     try {
+      const query = {
+        status: "approved",
+        tags: { $regex: search, $options: "i" }, // searching by tag
+      };
+
+      const total = await productsCollection.countDocuments(query);
       const products = await productsCollection
-        .find({
-          status: "approved",
-          name: { $regex: search, $options: "i" },
-        })
+        .find(query)
         .sort({ timestamp: -1 })
+        .skip(skip)
+        .limit(limit)
         .toArray();
-      res.send(products);
+
+      res.send({ products, total });
     } catch (err) {
+      console.error("Fetch error:", err);
       res.status(500).send({ message: "Failed to fetch products" });
     }
   });
@@ -41,22 +53,44 @@ module.exports = (client) => {
     }
   });
 
+  // GET /api/products/user-count?email=email@example.com
+  router.get("/user-count", async (req, res) => {
+    const email = req.query.email;
+    if (!email) return res.status(400).json({ message: "Email is required" });
+
+    const count = await productsCollection.countDocuments({
+      "owner.email": email,
+    });
+    res.json({ count });
+  });
+
   // Add Product
-  router.post("/add", verifyToken, async (req, res) => {
-    const product = {
-      ...req.body,
-      isFeatured: false,
-      status: "pending",
-      timestamp: new Date(),
-      upvotes: 0,
-      voters: [],
-    };
+  router.post("/add", async (req, res) => {
+    const product = req.body;
+    const userEmail = product?.owner?.email;
 
     try {
+      // Check user from DB
+      const user = await usersCollection.findOne({ email: userEmail });
+      if (!user) return res.status(403).json({ message: "Unauthorized user." });
+
+      // Check how many products this user already added
+      const productCount = await productsCollection.countDocuments({
+        "owner.email": userEmail,
+      });
+
+      if (!user.isSubscribed && productCount >= 1) {
+        return res.status(403).json({
+          message: "Only one product allowed for free users. Please subscribe.",
+        });
+      }
+
+      // Insert product
       const result = await productsCollection.insertOne(product);
-      res.send(result);
+      res.json({ success: true, insertedId: result.insertedId });
     } catch (err) {
-      res.status(500).send({ error: "Failed to add product" });
+      console.error("Error adding product:", err);
+      res.status(500).json({ message: "Internal server error." });
     }
   });
 
@@ -241,44 +275,42 @@ module.exports = (client) => {
     }
   });
 
+  router.patch("/vote/:id", verifyToken, async (req, res) => {
+    try {
+      const productId = req.params.id;
+      const userEmail = req.user.email;
 
-router.patch("/vote/:id", verifyToken, async (req, res) => {
-  try {
-    const productId = req.params.id;
-    const userEmail = req.user.email;
+      if (!ObjectId.isValid(productId)) {
+        return res.status(400).json({ message: "Invalid product ID" });
+      }
 
-    if (!ObjectId.isValid(productId)) {
-      return res.status(400).json({ message: "Invalid product ID" });
+      const product = await productsCollection.findOne({
+        _id: new ObjectId(productId),
+      });
+
+      if (!product) {
+        return res.status(404).json({ message: "Product not found" });
+      }
+
+      if (product.voters?.includes(userEmail)) {
+        return res.status(400).json({ message: "You already voted" });
+      }
+
+      const updated = await productsCollection.findOneAndUpdate(
+        { _id: new ObjectId(productId) },
+        {
+          $inc: { upvotes: 1 },
+          $push: { voters: userEmail },
+        },
+        { returnDocument: "after" }
+      );
+
+      res.json({ success: true, updatedProduct: updated.value });
+    } catch (err) {
+      console.error("Vote error:", err);
+      res.status(500).json({ message: "Server error while voting" });
     }
-
-    const product = await productsCollection.findOne({
-      _id: new ObjectId(productId),
-    });
-
-    if (!product) {
-      return res.status(404).json({ message: "Product not found" });
-    }
-
-    if (product.voters?.includes(userEmail)) {
-      return res.status(400).json({ message: "You already voted" });
-    }
-
-    const updated = await productsCollection.findOneAndUpdate(
-      { _id: new ObjectId(productId) },
-      {
-        $inc: { upvotes: 1 },
-        $push: { voters: userEmail },
-      },
-      { returnDocument: "after" }
-    );
-
-    res.json({ success: true, updatedProduct: updated.value });
-  } catch (err) {
-    console.error("Vote error:", err);
-    res.status(500).json({ message: "Server error while voting" });
-  }
-});
-
+  });
 
   // Get a single product by ID
   router.get("/:id", async (req, res) => {
