@@ -17,7 +17,7 @@ module.exports = (client) => {
   });
 
   // GET valid (non-expired) coupons
-  router.get("/valid", verifyToken, async (req, res) => {
+  router.get("/valid", async (req, res) => {
     const today = new Date();
 
     try {
