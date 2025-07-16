@@ -3,11 +3,23 @@ const cors = require("cors");
 const dotenv = require("dotenv");
 const cookieParser = require("cookie-parser");
 const { MongoClient, ServerApiVersion } = require("mongodb");
+const path = require("path");
+const fs = require("fs");
 
 // Load environment variables
 dotenv.config();
 
+// Validate required environment variables
+const requiredEnvVars = ["MONGODB_URI", "PORT"];
+for (const envVar of requiredEnvVars) {
+  if (!process.env[envVar]) {
+    console.error(`❌ Missing required environment variable: ${envVar}`);
+    process.exit(1);
+  }
+}
+
 const app = express();
+const port = process.env.PORT || 5000;
 
 // CORS configuration
 app.use(
@@ -17,16 +29,91 @@ app.use(
   })
 );
 
+// Middlewares
 app.use(express.json());
 app.use(cookieParser());
 
-const port = process.env.PORT || 5000;
-const uri = process.env.MONGODB_URI;
-
 // MongoDB client
-const client = new MongoClient(uri, {
-  serverApi: ServerApiVersion.v1,
+const client = new MongoClient(process.env.MONGODB_URI, {
+  serverApi: {
+    version: ServerApiVersion.v1,
+    strict: true,
+    deprecationErrors: true,
+  },
+  maxPoolSize: 50, // Connection pool size
+  wtimeoutMS: 2500,
 });
+
+// Health check endpoint
+app.get("/health", (req, res) => {
+  res.status(200).json({ 
+    status: "healthy",
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Request logging middleware
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.path}`);
+  next();
+});
+
+async function initializeRoutes(client) {
+  const routesDir = path.join(__dirname, "routes");
+  const routeConfig = [
+    { file: "products.routes", path: "/api/products" },
+    { file: "reviews.routes", path: "/api/reviews" },
+    { file: "reports.routes", path: "/api/reports" },
+    { file: "users.routes", path: "/api/users" },
+    { file: "payment.routes", path: "/api/payment" },
+    { file: "statistics.routes", path: "/api/statistics" },
+    { file: "coupons.routes", path: "/api/coupons" },
+  ];
+
+  for (const { file, path: routePath } of routeConfig) {
+    const filePath = path.join(routesDir, file + ".js");
+    try {
+      if (fs.existsSync(filePath)) {
+        const routeHandler = require(filePath)(client);
+        app.use(routePath, routeHandler);
+        console.log(`✅ Route initialized: ${routePath}`);
+      } else {
+        console.warn(`⚠️ Route file not found: ${file}`);
+      }
+    } catch (err) {
+      console.error(`❌ Error loading route ${file}:`, err);
+    }
+  }
+}
+
+async function verifyCollections(db) {
+  const requiredCollections = [
+    "products",
+    "reviews",
+    "reports",
+    "users",
+    "payments",
+    "statistics",
+    "coupons"
+  ];
+
+  const existingCollections = (await db.listCollections().toArray()).map(
+    (col) => col.name
+  );
+
+  for (const col of requiredCollections) {
+    if (!existingCollections.includes(col)) {
+      console.warn(`⚠️ Collection does not exist: ${col}`);
+    } else {
+      try {
+        const count = await db.collection(col).countDocuments();
+        console.log(`📊 Collection ${col} has ${count} documents`);
+      } catch (err) {
+        console.error(`❌ Error counting documents in ${col}:`, err);
+      }
+    }
+  }
+}
 
 async function run() {
   try {
@@ -36,52 +123,58 @@ async function run() {
 
     // Verify connection
     await client.db("admin").command({ ping: 1 });
-    console.log(
-      "Pinged your deployment. You successfully connected to MongoDB!"
-    );
+    console.log("Pinged your deployment. You successfully connected to MongoDB!");
 
     // Get database reference
     const db = client.db("apporbitDB");
 
-    // Verify products collection exists
-    const collections = await db.listCollections().toArray();
-    const productCollectionExists = collections.some(
-      (col) => col.name === "products"
-    );
+    // Verify collections
+    await verifyCollections(db);
 
-    if (!productCollectionExists) {
-      console.warn("⚠️ 'products' collection does not exist in the database");
-    } else {
-      const productsCount = await db.collection("products").countDocuments();
-      console.log(`📊 Found ${productsCount} products in the collection`);
-    }
-
-    // Setup routes
-    const productRoutes = require("./routes/products.routes")(client);
-    const reviewsRoutes = require("./routes/reviews.routes")(client);
-    const reportsRoutes = require("./routes/reports.routes")(client);
-    const usersRoutes = require("./routes/users.routes")(client);
-    const paymentRoutes = require("./routes/payment.routes")(client);
-    const statisticsRoutes = require("./routes/statistics.routes")(client);
-    const couponsRoutes = require("./routes/coupons.routes")(client);
-
-    app.use("/api/products", productRoutes);
-    app.use("/api/reviews", reviewsRoutes);
-    app.use("/api/reports", reportsRoutes);
-    app.use("/api/users", usersRoutes);
-    app.use("/api/payment", paymentRoutes);
-    app.use("/api/statistics", statisticsRoutes);
-    app.use("/api/coupons", couponsRoutes);
+    // Initialize routes
+    await initializeRoutes(client);
 
     // Root endpoint
     app.get("/", (req, res) => {
-      res.send("🔥 AppOrbit server running!");
+      res.json({
+        message: "🔥 AppOrbit server running!",
+        version: "1.0.0",
+        routes: [
+          "/api/products",
+          "/api/reviews",
+          "/api/reports",
+          "/api/users",
+          "/api/payment",
+          "/api/statistics",
+          "/api/coupons"
+        ]
+      });
+    });
+
+    // 404 handler
+    app.use((req, res) => {
+      res.status(404).json({ 
+        error: "Endpoint not found",
+        availableEndpoints: [
+          "/api/products",
+          "/api/reviews",
+          "/api/reports",
+          "/api/users",
+          "/api/payment",
+          "/api/statistics",
+          "/api/coupons",
+          "/health"
+        ]
+      });
     });
 
     // Error handling middleware
     app.use((err, req, res, next) => {
       console.error("Server error:", err);
-      res.status(500).json({ error: "Internal server error" });
+      res.status(500).json({ 
+        error: "Internal server error",
+        timestamp: new Date().toISOString()
+      });
     });
   } catch (err) {
     console.error("❌ Server startup failed:", err);
@@ -89,12 +182,27 @@ async function run() {
   }
 }
 
-run().catch(console.dir);
-
-app.get("/", (req, res) => {
-  res.send("🔥 AppOrbit server running!");
+// Graceful shutdown
+process.on("SIGINT", async () => {
+  console.log("🛑 Shutting down server gracefully...");
+  try {
+    await client.close();
+    console.log("✅ MongoDB connection closed");
+    process.exit(0);
+  } catch (err) {
+    console.error("❌ Error during shutdown:", err);
+    process.exit(1);
+  }
 });
 
+// Start server
+run().catch((err) => {
+  console.error("❌ Fatal error:", err);
+  process.exit(1);
+});
+
+// Only keep one server listen call
 app.listen(port, () => {
-  console.log(`Server listening on port ${port}`);
+  console.log(`🚀 Server listening on port ${port}`);
+  console.log(`🌐 Access the server at http://localhost:${port}`);
 });
