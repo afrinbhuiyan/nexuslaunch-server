@@ -164,11 +164,11 @@ module.exports = (client) => {
   });
 
   // ✅ GET Products by User Email (for My Products Page)
-  router.get("/user/:email", verifyToken, async (req, res) => {
+  router.get("/by-user/:email", verifyToken, async (req, res) => {
     try {
       const products = await productsCollection
         .find({
-          "owner.email": req.params.email, // Changed from userEmail to owner.email
+          "owner.email": req.params.email,
         })
         .toArray();
       res.send(products);
@@ -223,7 +223,7 @@ module.exports = (client) => {
     }
   });
 
-  router.patch("/:id", async (req, res) => {
+  router.patch("/id/:id", async (req, res) => {
     const { id } = req.params;
     const updatedData = req.body;
 
@@ -313,7 +313,7 @@ module.exports = (client) => {
   });
 
   // Get a single product by ID
-  router.get("/:id", async (req, res) => {
+  router.get("/id/:id", async (req, res) => {
     const { id } = req.params;
 
     try {
